@@ -1,0 +1,9 @@
+#ifndef Arduino_h
+#include <Arduino.h>
+#endif
+#ifndef _MAIN_HPP
+#define _MAIN_HPP
+void setup();
+void loop();
+bool updateNetworkTime();
+#endif
