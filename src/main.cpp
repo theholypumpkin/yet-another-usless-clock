@@ -22,16 +22,13 @@
 #define uS_TO_S_FACTOR 1000000ULL  /* Conversion factor for micro seconds to seconds */
 #define TIME_TO_SLEEP 60
 /*================================================================================================*/
-/*enum statemachine_t
+enum statemachine_t
 {
-    READ_BRIGHTNESS_LEVEL,
-    READ_BATTERY_VOLTAGE,
     DISPLAY_TIME,
     DISPLAY_DATE,
-    DISPALY_BATTERY,
-    IDLE
+    DISPALY_BATTERY
 };
-volatile statemachine_t e_state = IDLE;*/
+volatile statemachine_t e_state = DISPLAY_TIME;
 /*================================================================================================*/
 //uint64_t sleep = 0;
 /*________________________________________________________________________________________________*/
@@ -39,30 +36,65 @@ Button timeButton(TIME_BUTTON_PIN),
        dateButton(DATE_BUTTON_PIN),
        batteryVoltageButton(BATTERY_VOLTAGE_BUTTON_PIN);
 ESP32Time rtc;
+Adafruit_7segment display = Adafruit_7segment();
 /*================================================================================================*/
 void setup(){
-    //analogReadResolution(SOC_ADC_MAX_BITWIDTH);
     Serial.begin(9600);
     if(updateNetworkTime()){ //set real time acording to network
         Serial.println("Network Time successful");
-        //Serial.println(rtc.getTime("%A, %B %d %Y %H:%M:%S"));
     }else{
         Serial.println("ERROR: No Network Time");  
     }
+    bool begun = display.begin(0x70);
+    Serial.println(begun ? "True" : "False");
     delay(10000);
-    //sleep = TIME_TO_SLEEP * uS_TO_S_FACTOR;
-    //esp_sleep_enable_timer_wakeup(TIME_TO_SLEEP * uS_TO_S_FACTOR);
+    //e_state = DISPLAY_TIME;
 }
 /*________________________________________________________________________________________________*/
 void loop(){
     Serial.println(rtc.getTime("%A, %B %d %Y %H:%M:%S"));
     uint16_t brightness = analogRead(PHOTORESISTOR_BRIGHTNESS);
-    Serial.print(brightness,DEC);
-    Serial.print(", ");
-    Serial.println(brightness, BIN);
-    Serial.println("Going to Sleep");
-    delay(1000);
-    esp_deep_sleep(TIME_TO_SLEEP * uS_TO_S_FACTOR);
+    static float voltage = ((float) analogRead(BATTERY_VOLTAGE_PIN)*4.2) / 4095;
+    static uint8_t hour, minute, day, month;
+    //Serial.print(brightness,DEC);
+    //Serial.print(", ");
+    //Serial.println(brightness, BIN);
+    //Serial.println("Going to Sleep");
+    //delay(1000);
+    switch(e_state){
+        case DISPLAY_TIME:
+            hour = rtc.getHour(true); //TODO longpress button to change
+            minute = rtc.getMinute();
+            display.clear();
+            display.setBrightness(brightness >> 10); //Right shift by 10 bits
+            display.printNumber(hour*100+minute, DEC);
+            display.drawColon(true);
+            display.writeDisplay();
+            break;
+        case DISPLAY_DATE:
+            day = rtc.getDay();
+            month = rtc.getMonth();
+            display.clear();
+            display.setBrightness(brightness >> 10); //Right shift by 10 bits
+            display.printNumber(day*100+month, DEC);
+            display.writeDisplay();
+            break;
+        case DISPALY_BATTERY:
+            display.printFloat(voltage);
+            display.writeDisplay(); 
+            break;
+    }
+    //esp_deep_sleep(TIME_TO_SLEEP * uS_TO_S_FACTOR);
+    delay(10000);
+    if(e_state = DISPLAY_TIME){
+        e_state = DISPLAY_DATE;
+    }
+    else {//if(e_state = DISPLAY_DATE){
+        e_state = DISPLAY_TIME;
+    }
+    //else{
+    //    e_state = DISPLAY_TIME;
+    //}
 }
 /*________________________________________________________________________________________________*/
 bool updateNetworkTime(){
