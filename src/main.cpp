@@ -5,14 +5,16 @@
 #include "secrets.hpp"
 #include <Adafruit_GFX.h>
 #include <Adafruit_LEDBackpack.h>
-#include <JC_Button_ESP.h>
 #include <time.h>
+#include <math.h>
 #ifdef ARDUINO_ADAFRUIT_QTPY_ESP32S2
 #include <ESP32Time.h>
 #include <WiFi.h>
+#include <JC_Button_ESP.h>
 #elif ARDUINO_SAMD_NANO_33_IOT
 #include <RTCZero.h>
 #include <WiFiNINA.h>
+#include <JC_Button.h>
 #endif
 //#include <WiFiUdp.h>
 #include <NTPClient.h>
@@ -20,10 +22,13 @@
 //definitions
 #define PHOTORESISTOR_BRIGHTNESS A3
 #define BATTERY_VOLTAGE_PIN A2
-#define TIME_BUTTON_PIN 8
-#define DATE_BUTTON_PIN 9
-#define BATTERY_VOLTAGE_BUTTON_PIN 10
+#define TIME_BUTTON_PIN 36
+#define DATE_BUTTON_PIN 37
+#define BATTERY_VOLTAGE_BUTTON_PIN 35
 
+#define VIN_VOLTAGE_MAX 21
+#define BATTERY_VOLTAGE VIN_VOLTAGE_MAX
+#define ADC_RESOLUTION_BITS 4
 #define uS_TO_S_FACTOR 1000000ULL  /* Conversion factor for micro seconds to seconds */
 #define TIME_TO_SLEEP 60
 /*================================================================================================*/
@@ -33,9 +38,12 @@ enum statemachine_t
     DISPLAY_DATE,
     DISPALY_BATTERY
 };
-volatile statemachine_t e_state = DISPLAY_DATE;
+volatile statemachine_t e_state = DISPLAY_TIME;
 /*================================================================================================*/
-//uint64_t sleep = 0;
+//Only wate from external interrupt on the Nano 33 IoT ESP32 has very different way to handel INT
+#ifdef ARDUINO_SAMD_NANO_33_IOT 
+bool g_timeButtonIsrFlag = false, g_dateButtonIsrFlag = false , g_batteryVoltageIsrFlag = false;
+#endif
 /*________________________________________________________________________________________________*/
 Button timeButton(TIME_BUTTON_PIN),
        dateButton(DATE_BUTTON_PIN),
@@ -48,24 +56,41 @@ Button timeButton(TIME_BUTTON_PIN),
 Adafruit_7segment display = Adafruit_7segment();
 /*================================================================================================*/
 void setup(){
-    analogReadResolution(4); //4bits
+    analogReadResolution(ADC_RESOLUTION_BITS); //4bits
     Serial.begin(9600);
     if(updateNetworkTime()){ //set real time acording to network
         Serial.println("Network Time successful");
     }else{
         Serial.println("ERROR: No Network Time");  
     }
-    bool begun = display.begin(0x70);
-    Serial.println(begun ? "True" : "False");
-    delay(10000);
-    //e_state = DISPLAY_TIME;
+    display.begin(0x70);
+    timeButton.begin();
+    dateButton.begin();
+    batteryVoltageButton.begin();
+
+    //delay(10000);
 }
 /*________________________________________________________________________________________________*/
 void loop(){
-    //Serial.println(rtc.getTime("%A, %B %d %Y %H:%M:%S"));
     uint16_t brightness = analogRead(PHOTORESISTOR_BRIGHTNESS);
-    static float voltage = ((float) analogRead(BATTERY_VOLTAGE_PIN)*4.2) / 4095;
-    static uint8_t hour, minute, day, month;
+    /*static float voltage = 
+        ((float) analogRead(BATTERY_VOLTAGE_PIN)*BATTERY_VOLTAGE) / pow((float)2, 
+            (float)ADC_RESOLUTION_BITS);*/
+    static uint8_t hour, minute, day, month, batteryPercent;
+    static uint8_t batteryPercentLut[16] = {10,16,22,28,34,40,46,52,58,64,70,76,82,88,94,100};
+    timeButton.read();
+    dateButton.read();
+    batteryVoltageButton.read();
+    if(timeButton.wasPressed()){
+        e_state = DISPLAY_TIME;
+    }
+    else if(dateButton.wasPressed()){
+        e_state = DISPLAY_DATE;
+    }
+    else if(batteryVoltageButton.wasPressed()){
+        e_state = DISPALY_BATTERY;
+    }
+
     switch(e_state){
         case DISPLAY_TIME:
             #ifdef ARDUINO_ADAFRUIT_QTPY_ESP32S2
@@ -82,18 +107,27 @@ void loop(){
             break;
         case DISPLAY_DATE:
             day = rtc.getDay();
-            month = rtc.getMonth();
+            month = rtc.getMonth(); 
+            #ifdef ARDUINO_ADAFRUIT_QTPY_ESP32S2
+            month+=1; //0 to 11 hence +1
+            #endif
             display.setBrightness(brightness); //Right shift by 10 bits
-            display.printFloat(day + (month/100), 2, DEC);
+            display.print((double)(day+(month/100.0)));
             display.writeDisplay();
             break;
         case DISPALY_BATTERY:
-            display.printFloat(voltage, 2, DEC);
+            batteryPercent = analogRead(BATTERY_VOLTAGE_PIN);
+            display.writeDigitRaw(0, batteryPercentLut[batteryPercent]/10);
+            display.writeDigitRaw(1, batteryPercentLut[batteryPercent]%10);
+            display.writeDigitAscii(4, 'P', true);
             display.writeDisplay(); 
             break;
     }
-    //esp_deep_sleep(TIME_TO_SLEEP * uS_TO_S_FACTOR);
-    delay(10000);
+    //Untested because of Switch of Chip
+    esp_sleep_enable_ext0_wakeup(GPIO_NUM_37, LOW);
+    esp_sleep_enable_ext0_wakeup(GPIO_NUM_36, LOW);
+    esp_deep_sleep(TIME_TO_SLEEP * uS_TO_S_FACTOR);
+
 }
 /*________________________________________________________________________________________________*/
 bool updateNetworkTime(){
@@ -138,46 +172,18 @@ bool updateNetworkTime(){
     #endif
     return true;
 }
-/*time_t charTotimeStruct(const char* time, const char* date)
-{
-    // sample input: date = "Dec 06 2009", time = "12:34:56"
-    _yearFrom2000 = StringToUint8(date + 9);
-    // Jan Feb Mar Apr May Jun Jul Aug Sep Oct Nov Dec
-    switch (date[0])
-    {
-    case 'J':
-        if ( date[1] == 'a' )
-            _month = 1;
-        else if ( date[2] == 'n' )
-            _month = 6;
-        else
-            _month = 7;
-        break;
-    case 'F':
-        _month = 2;
-        break;
-    case 'A':
-        _month = date[1] == 'p' ? 4 : 8;
-        break;
-    case 'M':
-        _month = date[2] == 'r' ? 3 : 5;
-        break;
-    case 'S':
-        _month = 9;
-        break;
-    case 'O':
-        _month = 10;
-        break;
-    case 'N':
-        _month = 11;
-        break;
-    case 'D':
-        _month = 12;
-        break;
-    }
-    _dayOfMonth = StringToUint8(date + 4);
-    _hour = StringToUint8(time);
-    _minute = StringToUint8(time + 3);
-    _second = StringToUint8(time + 6);
-}*/
+ #ifdef ARDUINO_SAMD_NANO_33_IOT
+/*________________________________________________________________________________________________*/
+void timeButtonISR(){
+    g_timeButtonIsrFlag = true;
+}
+/*________________________________________________________________________________________________*/
+void dateButtonISR(){
+    g_dateButtonIsrFlag = true;
+}
+/*________________________________________________________________________________________________*/
+void batteryVoltageButtonISR(){
+    g_batteryVoltageIsrFlag = true;
+}
+#endif
 /*end of file*/
