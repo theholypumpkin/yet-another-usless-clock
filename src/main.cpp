@@ -7,8 +7,13 @@
 #include <Adafruit_LEDBackpack.h>
 #include <JC_Button_ESP.h>
 #include <time.h>
+#ifdef ARDUINO_ADAFRUIT_QTPY_ESP32S2
 #include <ESP32Time.h>
 #include <WiFi.h>
+#elif ARDUINO_SAMD_NANO_33_IOT
+#include <RTCZero.h>
+#include <WiFiNINA.h>
+#endif
 //#include <WiFiUdp.h>
 #include <NTPClient.h>
 /*================================================================================================*/
@@ -28,17 +33,22 @@ enum statemachine_t
     DISPLAY_DATE,
     DISPALY_BATTERY
 };
-volatile statemachine_t e_state = DISPLAY_TIME;
+volatile statemachine_t e_state = DISPLAY_DATE;
 /*================================================================================================*/
 //uint64_t sleep = 0;
 /*________________________________________________________________________________________________*/
 Button timeButton(TIME_BUTTON_PIN),
        dateButton(DATE_BUTTON_PIN),
        batteryVoltageButton(BATTERY_VOLTAGE_BUTTON_PIN);
-ESP32Time rtc;
+#ifdef ARDUINO_ADAFRUIT_QTPY_ESP32S2
+    ESP32Time rtc;
+#elif ARDUINO_SAMD_NANO_33_IOT
+    RTCZero rtc;
+#endif
 Adafruit_7segment display = Adafruit_7segment();
 /*================================================================================================*/
 void setup(){
+    analogReadResolution(4); //4bits
     Serial.begin(9600);
     if(updateNetworkTime()){ //set real time acording to network
         Serial.println("Network Time successful");
@@ -52,21 +62,20 @@ void setup(){
 }
 /*________________________________________________________________________________________________*/
 void loop(){
-    Serial.println(rtc.getTime("%A, %B %d %Y %H:%M:%S"));
+    //Serial.println(rtc.getTime("%A, %B %d %Y %H:%M:%S"));
     uint16_t brightness = analogRead(PHOTORESISTOR_BRIGHTNESS);
     static float voltage = ((float) analogRead(BATTERY_VOLTAGE_PIN)*4.2) / 4095;
     static uint8_t hour, minute, day, month;
-    //Serial.print(brightness,DEC);
-    //Serial.print(", ");
-    //Serial.println(brightness, BIN);
-    //Serial.println("Going to Sleep");
-    //delay(1000);
     switch(e_state){
         case DISPLAY_TIME:
-            hour = rtc.getHour(true); //TODO longpress button to change
-            minute = rtc.getMinute();
-            display.clear();
-            display.setBrightness(brightness >> 10); //Right shift by 10 bits
+            #ifdef ARDUINO_ADAFRUIT_QTPY_ESP32S2
+                hour = rtc.getHour(true); //TODO longpress button to change
+                minute = rtc.getMinute();
+            #elif ARDUINO_SAMD_NANO_33_IOT
+                hour = rtc.getHours();
+                minute = rtc.getMinutes();
+            #endif
+            display.setBrightness(brightness); //Right shift by 10 bits
             display.printNumber(hour*100+minute, DEC);
             display.drawColon(true);
             display.writeDisplay();
@@ -74,27 +83,17 @@ void loop(){
         case DISPLAY_DATE:
             day = rtc.getDay();
             month = rtc.getMonth();
-            display.clear();
-            display.setBrightness(brightness >> 10); //Right shift by 10 bits
-            display.printNumber(day*100+month, DEC);
+            display.setBrightness(brightness); //Right shift by 10 bits
+            display.printFloat(day + (month/100), 2, DEC);
             display.writeDisplay();
             break;
         case DISPALY_BATTERY:
-            display.printFloat(voltage);
+            display.printFloat(voltage, 2, DEC);
             display.writeDisplay(); 
             break;
     }
     //esp_deep_sleep(TIME_TO_SLEEP * uS_TO_S_FACTOR);
     delay(10000);
-    if(e_state = DISPLAY_TIME){
-        e_state = DISPLAY_DATE;
-    }
-    else {//if(e_state = DISPLAY_DATE){
-        e_state = DISPLAY_TIME;
-    }
-    //else{
-    //    e_state = DISPLAY_TIME;
-    //}
 }
 /*________________________________________________________________________________________________*/
 bool updateNetworkTime(){
@@ -104,7 +103,11 @@ bool updateNetworkTime(){
     while (WiFi.status() != WL_CONNECTED){ //Loop until connected to Wifi
         connection_attempts++;
         if(connection_attempts == 4){
-            WiFi.disconnect(true, false); //now we no longer need wifi
+            #ifdef ARDUINO_ADAFRUIT_QTPY_ESP32S2
+                WiFi.disconnect(true, false); //now we no longer need wifi
+            #elif ARDUINO_SAMD_NANO_33_IOT
+                WiFi.end();
+            #endif
             return false;
         }
         delay(1000);
@@ -116,14 +119,23 @@ bool updateNetworkTime(){
     while(!ntpClient.update()){ //attempt to connect to ntp server up to 5 times.
         connection_attempts++;
         if(connection_attempts == 4){
-            WiFi.disconnect(true, false); //now we no longer need wifi
+            #ifdef ARDUINO_ADAFRUIT_QTPY_ESP32S2
+                WiFi.disconnect(true, false); //now we no longer need wifi
+            #elif ARDUINO_SAMD_NANO_33_IOT
+                WiFi.end();
+            #endif
             return false;
         }
         delay(1000);
     }
     unsigned long epochTime = ntpClient.getEpochTime();
-    rtc.setTime(epochTime);
-    WiFi.disconnect(true, false); //now we no longer need wifi
+    #ifdef ARDUINO_ADAFRUIT_QTPY_ESP32S2
+        rtc.setTime(epochTime);
+        WiFi.disconnect(true, false); //now we no longer need wifi
+    #elif ARDUINO_SAMD_NANO_33_IOT
+        rtc.setEpoch(epochTime);
+        WiFi.end();
+    #endif
     return true;
 }
 /*time_t charTotimeStruct(const char* time, const char* date)
