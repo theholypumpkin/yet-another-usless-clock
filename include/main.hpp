@@ -6,4 +6,8 @@
 void setup();
 void loop();
 bool updateNetworkTime();
+void timeButtonISR();
+void dateButtonISR();
+void batteryVoltageButtonISR();
+void timeAlarmISR();
 #endif
