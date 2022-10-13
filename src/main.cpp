@@ -55,7 +55,7 @@ volatile statemachine_t e_state = DISPLAY_TIME;
 /*================================================================================================*/
 //Only wate from external interrupt on the Nano 33 IoT ESP32 has very different way to handel INT
 #ifdef ARDUINO_SAMD_NANO_33_IOT 
-bool g_timeButtonIsrFlag = false, 
+volatile bool g_timeButtonIsrFlag = false, 
      g_dateButtonIsrFlag = false , 
      g_batteryVoltageIsrFlag = false,
      g_timeAlarmIsrFlag = false;
