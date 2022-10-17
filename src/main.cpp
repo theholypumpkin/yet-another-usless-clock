@@ -33,11 +33,11 @@
 #define uS_TO_S_FACTOR 1000000ULL  /* Conversion factor for micro seconds to seconds */
 #define TIME_TO_SLEEP 60
 #elif ARDUINO_SAMD_NANO_33_IOT
-#define PHOTORESISTOR_BRIGHTNESS A7
-#define BATTERY_VOLTAGE_PIN A6
-#define TIME_BUTTON_PIN 9
-#define DATE_BUTTON_PIN 10
-#define BATTERY_VOLTAGE_BUTTON_PIN 11
+#define PHOTORESISTOR_BRIGHTNESS A1
+#define BATTERY_VOLTAGE_PIN A2
+#define TIME_BUTTON_PIN 2
+#define DATE_BUTTON_PIN 3
+#define BATTERY_VOLTAGE_BUTTON_PIN 9
 
 #define VIN_VOLTAGE_MAX 21
 #define BATTERY_VOLTAGE VIN_VOLTAGE_MAX
@@ -59,6 +59,7 @@ volatile bool g_timeButtonIsrFlag = false,
      g_dateButtonIsrFlag = false , 
      g_batteryVoltageIsrFlag = false,
      g_timeAlarmIsrFlag = false;
+uint16_t g_error_WiFi_Status_Code = WL_CONNECTED; 
 #endif
 /*________________________________________________________________________________________________*/
 Button timeButton(TIME_BUTTON_PIN),
@@ -72,6 +73,7 @@ Button timeButton(TIME_BUTTON_PIN),
 Adafruit_7segment display = Adafruit_7segment();
 /*================================================================================================*/
 void setup(){
+    pinMode(LED_BUILTIN, OUTPUT);
     analogReadResolution(ADC_RESOLUTION_BITS); //4bits
     //Serial.begin(9600);
     //while(!Serial);
@@ -172,7 +174,7 @@ void loop(){
             break;
         /*-   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   */
         case DISPLAY_ERROR:
-            display.printError();
+            display.printNumber(g_error_WiFi_Status_Code, DEC);
             display.writeDisplay();
             break;
     }
@@ -206,6 +208,9 @@ void loop(){
 }
 /*________________________________________________________________________________________________*/
 bool updateNetworkTime(){
+    /*String statusString[] = {"WL_IDLE_STATUS","WL_NO_SSID_AVAIL","WL_SCAN_COMPLETED",
+        "WL_CONNECTED","WL_CONNECT_FAILED","WL_CONNECTION_LOST","WL_DISCONNECTED","WL_AP_LISTENING",
+        "WL_AP_CONNECTED","WL_AP_FAILED"}; */
     WiFi.setHostname(g_hostname);
     uint8_t connection_attempts = 0;
     WiFi.begin(g_wifiSsid, g_wifiPass);
@@ -216,22 +221,31 @@ bool updateNetworkTime(){
                 WiFi.disconnect(true, false); //now we no longer need wifi
             #elif ARDUINO_SAMD_NANO_33_IOT
                 WiFi.end();
+                //uint8_t status = WiFi.status();
+                //blink(status);
+                g_error_WiFi_Status_Code = WiFi.status();
             #endif
             return false;
         }
         delay(1000);
-    } 
+    }
+    //if WiFi is sucessful I should exprect 3 blinks
+    //uint8_t status = WiFi.status();
+    //blink(status);
+
     WiFiUDP ntpUdpObject;
     NTPClient ntpClient(ntpUdpObject, g_ntpTimeServerURL, 7200);
     ntpClient.begin();
     connection_attempts = 0;
     while(!ntpClient.update()){ //attempt to connect to ntp server up to 5 times.
         connection_attempts++;
+        //Serial.println("NTP failed");
         if(connection_attempts == 4){
             #ifdef ARDUINO_ADAFRUIT_QTPY_ESP32S2
                 WiFi.disconnect(true, false); //now we no longer need wifi
             #elif ARDUINO_SAMD_NANO_33_IOT
                 WiFi.end();
+                g_error_WiFi_Status_Code = 1000;
             #endif
             return false;
         }
@@ -265,6 +279,16 @@ void batteryVoltageButtonISR(){
 /*-   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   */
 void timeAlarmISR(){
     g_timeAlarmIsrFlag = true;
+}
+/*-   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   */
+void blink(uint16_t times, uint16_t delay_time){
+    delay(delay_time);
+    for(uint16_t i = 1; i < times+1; i++){
+        digitalWrite(LED_BUILTIN, HIGH);
+        delay(delay_time);
+        digitalWrite(LED_BUILTIN, LOW);
+        delay(delay_time);
+    }
 }
 /*________________________________________________________________________________________________*/
 #endif
