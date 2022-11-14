@@ -234,7 +234,10 @@ bool updateNetworkTime(){
     //blink(status);
 
     WiFiUDP ntpUdpObject;
-    NTPClient ntpClient(ntpUdpObject, g_ntpTimeServerURL, 7200);
+    //Summer time
+    //NTPClient ntpClient(ntpUdpObject, g_ntpTimeServerURL, 7200);
+    //Winter time
+    NTPClient ntpClient(ntpUdpObject, g_ntpTimeServerURL, 3600);
     ntpClient.begin();
     connection_attempts = 0;
     while(!ntpClient.update()){ //attempt to connect to ntp server up to 5 times.
