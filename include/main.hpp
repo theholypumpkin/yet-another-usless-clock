@@ -6,9 +6,8 @@
 void setup();
 void loop();
 bool updateNetworkTime();
-void timeButtonISR();
-void dateButtonISR();
-void batteryVoltageButtonISR();
+uint8_t calcDisplayBrightness(int x);
+float calcBatteryPercentageLiPo(float x);
 void timeAlarmISR();
 void blink(uint16_t times, uint16_t delay_time = 500);
 #endif

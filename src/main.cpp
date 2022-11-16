@@ -41,7 +41,7 @@
 
 #define VIN_VOLTAGE_MAX 21
 #define BATTERY_VOLTAGE VIN_VOLTAGE_MAX
-#define ADC_RESOLUTION_BITS 4
+//#define ADC_RESOLUTION_BITS 4
 #endif
 /*================================================================================================*/
 enum statemachine_t
@@ -55,12 +55,11 @@ volatile statemachine_t e_state = DISPLAY_TIME;
 /*================================================================================================*/
 //Only wate from external interrupt on the Nano 33 IoT ESP32 has very different way to handel INT
 #ifdef ARDUINO_SAMD_NANO_33_IOT 
-volatile bool g_timeButtonIsrFlag = false, 
-     g_dateButtonIsrFlag = false , 
-     g_batteryVoltageIsrFlag = false,
-     g_timeAlarmIsrFlag = false;
+volatile bool g_timeAlarmIsrFlag = true; //intial state is true so time is displayed on first loop.
 uint16_t g_error_WiFi_Status_Code = WL_CONNECTED; 
 #endif
+const float MAX_BATTERY_VOLTAGE = 4.2, //use a R1 = 1k, 3.3k or or higher in same ratio.
+            ADC_VOLTAGE_FACTOR = MAX_BATTERY_VOLTAGE / powf(2.0, ADC_RESOLUTION);
 /*________________________________________________________________________________________________*/
 Button timeButton(TIME_BUTTON_PIN),
        dateButton(DATE_BUTTON_PIN),
@@ -74,7 +73,7 @@ Adafruit_7segment display = Adafruit_7segment();
 /*================================================================================================*/
 void setup(){
     pinMode(LED_BUILTIN, OUTPUT);
-    analogReadResolution(ADC_RESOLUTION_BITS); //4bits
+    //analogReadResolution(ADC_RESOLUTION_BITS); //4bits
     //Serial.begin(9600);
     //while(!Serial);
     #ifdef ARDUINO_SAMD_NANO_33_IOT
@@ -89,58 +88,72 @@ void setup(){
     dateButton.begin();
     batteryVoltageButton.begin();
     /*-   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   */
-    #ifdef ARDUINO_SAMD_NANO_33_IOT
-        attachInterrupt(digitalPinToInterrupt(TIME_BUTTON_PIN), timeButtonISR, FALLING);
-        attachInterrupt(digitalPinToInterrupt(DATE_BUTTON_PIN), dateButtonISR, FALLING);
-        attachInterrupt(digitalPinToInterrupt(BATTERY_VOLTAGE_BUTTON_PIN), 
-            batteryVoltageButtonISR, FALLING);
-        /*-   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   */    
+    #ifdef ARDUINO_SAMD_NANO_33_IOT   
         rtc.setAlarmSeconds(0); //Trigger an alarm on every full minute
         rtc.attachInterrupt(timeAlarmISR);
         rtc.enableAlarm(rtc.MATCH_SS);
     #endif
-    delay(5000); //To allow new programms to be uploaded
 }
 /*________________________________________________________________________________________________*/
 void loop(){
-    uint16_t brightness = analogRead(PHOTORESISTOR_BRIGHTNESS);
-    static uint8_t oldHour, hour, minute, oldDay, day, month, batteryPercent;
-    static uint8_t batteryPercentLut[16] = {10,16,22,28,34,40,46,52,58,64,70,76,82,88,94,100};
+    uint8_t brightness = calcDisplayBrightness(analogRead(PHOTORESISTOR_BRIGHTNESS));
+    static uint8_t oldHour, hour, minute, oldDay, day, month;
+    long timeNumber;
+    float batteryVoltage, batteryPercent;
     /*-   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   */
-    timeButton.read();
-    dateButton.read();
-    batteryVoltageButton.read();
-    
-    if(timeButton.wasPressed()){
-        e_state = DISPLAY_TIME;
-    }
-    else if(dateButton.wasPressed()){
-        e_state = DISPLAY_DATE;
-    }
-    else if(batteryVoltageButton.wasPressed()){
-        e_state = DISPALY_BATTERY;
+    //Read button 100 times and than when the time alarm triggers stop because the flag is true.
+    while(!g_timeAlarmIsrFlag){ //when the alarm was not trigged loop over buttons
+        timeButton.read();
+        dateButton.read();
+        batteryVoltageButton.read();
+        
+        if(timeButton.wasPressed()){
+            e_state = DISPLAY_TIME;
+            break;
+        }
+        else if(dateButton.wasPressed()){
+            e_state = DISPLAY_DATE;
+            break;
+        }
+        else if(batteryVoltageButton.wasPressed()){
+            e_state = DISPALY_BATTERY;
+            break;
+        }
+        delay(10); 
+        /* power consumtion savings for sleep are minmal because most of the power consumption
+         * comes from the LEDs not the MCU. So sleep wont contribute much of anything.
+         * Also ArduinoLowPower.h also uses the RTC to set wakeup alarms. This could interfere
+         * with the minutly time alarm of the rtc.
+         */
     }
     /*-   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   */
     switch(e_state){
         /*-   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   */
         case DISPLAY_TIME:
-            if(g_timeAlarmIsrFlag || g_timeButtonIsrFlag){
-                //Serial.println("Display Time");
-                #ifdef ARDUINO_ADAFRUIT_QTPY_ESP32S2
-                    hour = rtc.getHour(true);
-                    minute = rtc.getMinute();
-                #elif ARDUINO_SAMD_NANO_33_IOT
-                    oldHour = hour;
-                    hour = rtc.getHours();
-                    minute = rtc.getMinutes();
-                    //Serial.println(hour);
-                    //Serial.println(minute);
-                #endif
-                display.setBrightness(brightness); //Right shift by 10 bits
-                display.printNumber(hour*100+minute, DEC);
-                display.drawColon(true);
-                display.writeDisplay();
+            //Serial.println("Display Time");
+            #ifdef ARDUINO_ADAFRUIT_QTPY_ESP32S2
+                hour = rtc.getHour(true);
+                minute = rtc.getMinute();
+            #elif ARDUINO_SAMD_NANO_33_IOT
+                oldHour = hour;
+                hour = rtc.getHours();
+                minute = rtc.getMinutes();
+                //Serial.println(hour);
+                //Serial.println(minute);
+            #endif
+            display.setBrightness(brightness); //Right shift by 10 bits
+            timeNumber = hour*100+minute;
+            display.printNumber(timeNumber, DEC);
+            //Write a leading 0 to the clockface if we are before 10 o clock
+            if(timeNumber < 1000){
+                display.writeDigitNum(0, 0);
+                //if we have midnight write two leading 0 to the clockface to indecate zero o clock.
+                if(timeNumber < 100){
+                    display.writeDigitNum(1, 0);
+                }
             }
+            display.drawColon(true);
+            display.writeDisplay();
             break;
         /*-   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   */
         case DISPLAY_DATE:
@@ -148,7 +161,7 @@ void loop(){
             day = rtc.getDay();
             month = rtc.getMonth();
             //only update Display when date changes or button was pressed
-            if((oldDay != day) || g_dateButtonIsrFlag){ 
+            if((oldDay != day)){ 
                 //Serial.println("Display Date");
                 //Serial.println(day);
                 //Serial.println(month);
@@ -162,15 +175,14 @@ void loop(){
             break;
         /*-   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   */
         case DISPALY_BATTERY:
-            if(g_timeAlarmIsrFlag || g_batteryVoltageIsrFlag){
-                batteryPercent = analogRead(BATTERY_VOLTAGE_PIN);
-                display.writeDigitNum(0, batteryPercentLut[batteryPercent]/10);
-                display.writeDigitNum(1, batteryPercentLut[batteryPercent]%10);
-                display.writeDigitRaw(3, 0b00000000);
-                display.drawColon(false);
-                display.writeDigitRaw(4, 0b11010010);
-                display.writeDisplay(); 
-            }
+            batteryVoltage = analogRead(BATTERY_VOLTAGE_PIN) * ADC_VOLTAGE_FACTOR;
+            batteryPercent = calcBatteryPercentageLiPo(batteryVoltage);
+            display.writeDigitNum(0,(long) batteryPercent/10);
+            display.writeDigitNum(1,(long) batteryPercent%10);
+            display.writeDigitRaw(3, 0b00000000);
+            display.drawColon(false);
+            display.writeDigitRaw(4, 0b11010010);
+            display.writeDisplay(); 
             break;
         /*-   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   */
         case DISPLAY_ERROR:
@@ -182,15 +194,10 @@ void loop(){
     /*Just to wake up on button press we trigger an external interrupt.
      * JC Button does the rest
      */
-    if(g_dateButtonIsrFlag || g_timeButtonIsrFlag || g_batteryVoltageIsrFlag || g_timeAlarmIsrFlag){
-        g_timeButtonIsrFlag = false;
-        g_dateButtonIsrFlag = false;
-        g_batteryVoltageIsrFlag = false;
-        g_timeAlarmIsrFlag = false;
-    }
+    g_timeAlarmIsrFlag = false;
     /*-   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   */
     //Due to te lack of a crystal on the MCU the rtc is not really rtc and drifts a lot.
-    // We adjust for drifting every hour.
+    // We fetch the networktime every hour to compensate for the drifting
     if(oldHour != hour){
         updateNetworkTime();
     }
@@ -199,11 +206,6 @@ void loop(){
     esp_sleep_enable_ext0_wakeup(GPIO_NUM_37, LOW);
     esp_sleep_enable_ext0_wakeup(GPIO_NUM_36, LOW);
     esp_deep_sleep(TIME_TO_SLEEP * uS_TO_S_FACTOR);
-    /*-   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   */
-    #elif ARDUINO_SAMD_NANO_33_IOT
-    rtc.standbyMode();
-    //Serial.println("Loop");
-    //delay(1000);
     #endif
 }
 /*________________________________________________________________________________________________*/
@@ -266,18 +268,25 @@ bool updateNetworkTime(){
     #endif
     return true;
 }
+/*-   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   */
+uint8_t calcDisplayBrightness(int x){
+    if(x > 90)
+        return 15;
+    else if(x < 15)
+        return 0;
+    else
+        return (x/5)-3; //calculate brightness.
+}
  #ifdef ARDUINO_SAMD_NANO_33_IOT
 /*-   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   */
-void timeButtonISR(){
-    g_timeButtonIsrFlag = true;
-}
-/*-   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   */
-void dateButtonISR(){
-    g_dateButtonIsrFlag = true;
-}
-/*-   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   */
-void batteryVoltageButtonISR(){
-    g_batteryVoltageIsrFlag = true;
+float calcBatteryPercentageLiPo(float x)
+{
+    if(x > 3.896)
+        return 120.0f*x-404;
+    else if (x > 3.648)
+        return 255.0f*x - 930.0f;      
+    else
+        return 0.0;
 }
 /*-   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   */
 void timeAlarmISR(){
