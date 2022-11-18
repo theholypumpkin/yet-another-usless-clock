@@ -73,7 +73,7 @@ Adafruit_7segment display = Adafruit_7segment();
 /*================================================================================================*/
 void setup(){
     pinMode(LED_BUILTIN, OUTPUT);
-    //analogReadResolution(ADC_RESOLUTION_BITS); //4bits
+    analogReadResolution(ADC_RESOLUTION); //4bits
     //Serial.begin(9600);
     //while(!Serial);
     #ifdef ARDUINO_SAMD_NANO_33_IOT
@@ -182,6 +182,8 @@ void loop(){
             display.writeDigitRaw(3, 0b00000000);
             display.drawColon(false);
             display.writeDigitRaw(4, 0b11010010);
+            //display.printNumber(analogRead(BATTERY_VOLTAGE_PIN), DEC);
+            //display.printFloat(batteryVoltage, 2, DEC);
             display.writeDisplay(); 
             break;
         /*-   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   */
