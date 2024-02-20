@@ -100,13 +100,7 @@ void setup(){
 /*_______________________________________________________________________________________________*/
 
 void loop(){
-    // calculate the display brightness based on the current enviormental brightness
-
-    uint8_t brightness = calcDisplayBrightness(analogRead(PHOTORESISTOR_BRIGHTNESS));
-
-    static uint8_t oldHour, hour, minute, oldDay, day, month;
-    long timeNumber;
-    float batteryVoltage, batteryPercent;
+    static uint8_t oldHour, hour, oldDay, day;
     /* -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   - */
     // read button (debounce)
     timeButton.read();
@@ -126,68 +120,81 @@ void loop(){
     /* -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   - */
     switch(e_state){
         case DISPLAY_TIME:
-            #ifdef ARDUINO_ADAFRUIT_QTPY_ESP32S2
+            { //dummy block too keep on stack only what is needed
+                #ifdef ARDUINO_ADAFRUIT_QTPY_ESP32S2
                 hour = rtc.getHour(true);
-                minute = rtc.getMinute();
+                uint8_t minute = rtc.getMinute();
 
-            #elif ARDUINO_SAMD_NANO_33_IOT
+                #elif ARDUINO_SAMD_NANO_33_IOT
                 oldHour = hour;
                 hour = rtc.getHours();
-                minute = rtc.getMinutes();
+                uint8_t minute = rtc.getMinutes();
 
-            #endif
-
-            display.setBrightness(brightness); //Right shift by 10 bits
-            timeNumber = hour * 100 + minute;
-            display.printNumber(timeNumber, DEC);
-
-            //Write a leading 0 to the clockface if we are before 10 o clock
-
-            if(timeNumber < 1000){
-                display.writeDigitNum(0, 0);
-
-                //if we have midnight write two leading 0 to the clockface to indecate zero 0 clock.
-
-                if(timeNumber < 100){
-                    display.writeDigitNum(1, 0);
-                }
-            }
-            display.drawColon(true);
-            display.writeDisplay();
-            break;
-        /* -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   - */
-        case DISPLAY_DATE:
-            oldDay = day;
-            day = rtc.getDay();
-            month = rtc.getMonth();
-
-            //only update Display when date changes or button was pressed
-            if((oldDay != day)){ 
-                
-                #ifdef ARDUINO_ADAFRUIT_QTPY_ESP32S2
-                month+=1; //0 to 11 hence +1
                 #endif
 
-                display.setBrightness(brightness); //Right shift by 10 bits
-                display.print((double)(day+(month/100.0)));
+                uint8_t brightness = calcDisplayBrightness(analogRead(PHOTORESISTOR_BRIGHTNESS));
+                display.setBrightness(brightness);
+                
+                long timeNumber = hour * 100 + minute;
+                display.printNumber(timeNumber, DEC);
+
+                //Write a leading 0 to the clockface if we are before 10 o clock
+                if(timeNumber < 1000){
+                    display.writeDigitNum(0, 0);
+
+                    //if we have midnight write two leading 0 to the clockface to indecate 
+                    //zero 0 clock.
+                    if(timeNumber < 100){
+                        display.writeDigitNum(1, 0);
+                    }
+                }
+                display.drawColon(true);
                 display.writeDisplay();
             }
             break;
         /* -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   - */
+        case DISPLAY_DATE:
+            {
+                oldDay = day;
+                day = rtc.getDay();
+                uint8_t month = rtc.getMonth();
+
+                //only update Display when date changes or button was pressed
+                if((oldDay != day)){ 
+                    
+                    #ifdef ARDUINO_ADAFRUIT_QTPY_ESP32S2
+                    month+=1; //0 to 11 hence +1
+                    #endif
+
+                    uint8_t brightness = calcDisplayBrightness(
+                        analogRead(PHOTORESISTOR_BRIGHTNESS));
+                    display.setBrightness(brightness);
+                    display.print((double)(day+(month/100.0)));
+                    display.writeDisplay();
+                }
+            }
+            break;
+        /* -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   - */
         case DISPALY_BATTERY:
-            batteryVoltage = analogRead(BATTERY_VOLTAGE_PIN) * ADC_VOLTAGE_FACTOR;
-            batteryPercent = calcBatteryPercentageLiPo(batteryVoltage);
+            {
+                float batteryVoltage = analogRead(BATTERY_VOLTAGE_PIN) * ADC_VOLTAGE_FACTOR;
+                float batteryPercent = calcBatteryPercentageLiPo(batteryVoltage);
 
-            display.writeDigitNum(0,(long) batteryPercent/10);
-            display.writeDigitNum(1,(long) batteryPercent%10);
-            display.writeDigitRaw(3, 0b00000000);
-            display.drawColon(false);
-            display.writeDigitRaw(4, 0b11010010);
+                uint8_t brightness = calcDisplayBrightness(
+                            analogRead(PHOTORESISTOR_BRIGHTNESS));
+                        display.setBrightness(brightness);
 
-            //display.printNumber(analogRead(BATTERY_VOLTAGE_PIN), DEC);
-            //display.printFloat(batteryVoltage, 2, DEC);
-            
-            display.writeDisplay();
+                /*display.writeDigitNum(0,(long) batteryPercent/10);
+                display.writeDigitNum(1,(long) batteryPercent%10);
+                display.writeDigitRaw(3, 0b00000000);
+                display.drawColon(false);
+                display.writeDigitRaw(4, 0b11010010);*/
+
+                display.printNumber(analogRead(BATTERY_VOLTAGE_PIN), DEC);
+                display.printFloat(batteryVoltage, 2, DEC);
+                
+                display.writeDisplay();
+            }
             break;
         /* -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   - */
         case DISPLAY_ERROR:
@@ -273,7 +280,8 @@ bool updateNetworkTime(){
 }
 /* -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   - */
 uint8_t calcDisplayBrightness(int adc_reading){
-    return adc_reading >> 8; // shift from 12 bits to 4 bits resolution
+    //return adc_reading >> 8; // shift from 12 bits to 4 bits resolution
+    return adc_reading/273; //plot brightness liniar to adc reading
 }
 /* -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   - */
  #ifdef ARDUINO_SAMD_NANO_33_IOT
