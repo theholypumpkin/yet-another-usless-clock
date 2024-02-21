@@ -42,6 +42,7 @@
 // enums, structs, unions, typedef
 enum statemachine_t
 {
+    IDLE,
     DISPLAY_TIME,
     DISPLAY_DATE,
     DISPALY_BATTERY,
@@ -119,6 +120,11 @@ void loop(){
 
     /* -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   - */
     switch(e_state){
+
+        case IDLE:
+            // The do nothing state
+            break;
+
         case DISPLAY_TIME:
             { //dummy block too keep on stack only what is needed
                 #ifdef ARDUINO_ADAFRUIT_QTPY_ESP32S2
@@ -150,6 +156,8 @@ void loop(){
                 }
                 display.drawColon(true);
                 display.writeDisplay();
+
+                e_state = IDLE;
             }
             break;
         /* -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   - */
@@ -159,19 +167,18 @@ void loop(){
                 day = rtc.getDay();
                 uint8_t month = rtc.getMonth();
 
-                //only update Display when date changes or button was pressed
-                if((oldDay != day)){ 
                     
-                    #ifdef ARDUINO_ADAFRUIT_QTPY_ESP32S2
-                    month+=1; //0 to 11 hence +1
-                    #endif
+                #ifdef ARDUINO_ADAFRUIT_QTPY_ESP32S2
+                month+=1; //0 to 11 hence +1
+                #endif
 
-                    uint8_t brightness = calcDisplayBrightness(
-                        analogRead(PHOTORESISTOR_BRIGHTNESS));
-                    display.setBrightness(brightness);
-                    display.print((double)(day+(month/100.0)));
-                    display.writeDisplay();
-                }
+                uint8_t brightness = calcDisplayBrightness(
+                    analogRead(PHOTORESISTOR_BRIGHTNESS));
+                display.setBrightness(brightness);
+                display.print((double)(day+(month/100.0)));
+                display.writeDisplay();
+
+                e_state = IDLE;
             }
             break;
         /* -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   - */
@@ -194,12 +201,17 @@ void loop(){
                 display.printFloat(batteryVoltage, 2, DEC);
                 
                 display.writeDisplay();
+
+                e_state = IDLE;
             }
             break;
         /* -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   - */
         case DISPLAY_ERROR:
             display.printNumber(g_error_WiFi_Status_Code, DEC);
             display.writeDisplay();
+
+            e_state = IDLE;
+            
             break;
     }
     /* -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   - */
