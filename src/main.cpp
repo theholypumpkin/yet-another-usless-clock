@@ -207,7 +207,7 @@ void loop(){
                             analogRead(PHOTORESISTOR_BRIGHTNESS));
                         display.setBrightness(brightness);
 
-                display.printNumber(LiPo.voltage());
+                display.printNumber(LiPo.level());
                 
                 display.writeDisplay();
 
