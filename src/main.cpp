@@ -91,7 +91,7 @@ void setup(){
     pinMode(LED_BUILTIN, OUTPUT);
     analogReadResolution(ADC_RESOLUTION); // set ADC resulution to max of 12 bits
     Serial.begin(9600);
-    while(!Serial);
+    //while(!Serial);
     #ifdef ARDUINO_SAMD_NANO_33_IOT
         rtc.begin();
     #endif
