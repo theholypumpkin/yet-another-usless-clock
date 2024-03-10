@@ -5,8 +5,7 @@
 #include "secrets.hpp"
 #include <Adafruit_GFX.h>
 #include <Adafruit_LEDBackpack.h>
-#include <time.h>
-#include <math.h>
+#include <Battery.h>
 #ifdef ARDUINO_ADAFRUIT_QTPY_ESP32S2
 #include <ESP32Time.h>
 #include <WiFi.h>
@@ -16,7 +15,6 @@
 #include <WiFiNINA.h>
 #include <JC_Button.h>
 #endif
-//#include <WiFiUdp.h>
 #include <NTPClient.h>
 /*===============================================================================================*/
 //definitions
@@ -31,13 +29,32 @@
     #define TIME_TO_SLEEP 60
 
 #elif ARDUINO_SAMD_NANO_33_IOT
-    
+    /* -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   - */
+    // pin defintions
     #define PHOTORESISTOR_BRIGHTNESS A0
     #define BATTERY_VOLTAGE_PIN A7
     #define TIME_BUTTON_PIN 2
     #define DATE_BUTTON_PIN 3
     #define BATTERY_VOLTAGE_BUTTON_PIN 10
 #endif
+/* -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   - */
+// macro to calculate the power ADC resulation at compile time
+#define POW_TWO(x) (1 << (x))
+/* -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   - */
+// refrerence voltages
+#define MAX_BATTERY_MILLI_VOLTAGE 4200
+#define MIN_BATTERY_MILLI_VOLTAGE 3000
+#define BOARD_REFERENCE_VOLTAGE 3300
+/* -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   - */
+// calculate voltage divider ratio
+#define VOLTAGE_DIVIDER_R1 980
+#define VOLTAGE_DIVIDER_R2 1501
+#define VOLTAGE_DIVIDER_RATIO (VOLTAGE_DIVIDER_R1 + VOLTAGE_DIVIDER_R2) / VOLTAGE_DIVIDER_R2
+/* -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   - */
+// calculate adc reading to battery voltage conversion factor
+#define MAX_BATTERY_VOLTAGE MAX_BATTERY_MILLI_VOLTAGE / 1000.0f
+#define ADC_VOLTAGE_FACTOR MAX_BATTERY_VOLTAGE / POW_TWO(ADC_RESOLUTION)
+
 /*===============================================================================================*/
 // enums, structs, unions, typedef
 enum statemachine_t
@@ -50,35 +67,31 @@ enum statemachine_t
 };
 volatile statemachine_t e_state = DISPLAY_TIME;
 /*===============================================================================================*/
-//Only wait from external interrupt on the Nano 33 IoT ESP32 has very different way to handel INT
+// global objects
 #ifdef ARDUINO_SAMD_NANO_33_IOT 
 uint16_t g_error_WiFi_Status_Code = WL_CONNECTED; 
 #endif
-// calculate the VOLTAGE_FACTOR to convert ADC readings into Volts
-const float MAX_BATTERY_VOLTAGE = 4.2, //R1 = 1k R2 = 2k
-            ADC_VOLTAGE_FACTOR = MAX_BATTERY_VOLTAGE / powf(2.0, ADC_RESOLUTION);
 /*_______________________________________________________________________________________________*/
 // create the buttons
 Button timeButton(TIME_BUTTON_PIN),
        dateButton(DATE_BUTTON_PIN),
        batteryVoltageButton(BATTERY_VOLTAGE_BUTTON_PIN);
-
+/* -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   - */
 #ifdef ARDUINO_ADAFRUIT_QTPY_ESP32S2
-
     ESP32Time rtc;
-
 #elif ARDUINO_SAMD_NANO_33_IOT
-
     RTCZero rtc;
 #endif
-
+/* -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   - */
 Adafruit_7segment display = Adafruit_7segment();
+/* -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   - */
+Battery LiPo = Battery(3000, MAX_BATTERY_MILLI_VOLTAGE, BATTERY_VOLTAGE_PIN, ADC_RESOLUTION);
 /*===============================================================================================*/
 void setup(){
     pinMode(LED_BUILTIN, OUTPUT);
     analogReadResolution(ADC_RESOLUTION); // set ADC resulution to max of 12 bits
-    //Serial.begin(9600);
-    //while(!Serial);
+    Serial.begin(9600);
+    while(!Serial);
     #ifdef ARDUINO_SAMD_NANO_33_IOT
         rtc.begin();
     #endif
@@ -97,6 +110,11 @@ void setup(){
         rtc.attachInterrupt(timeAlarmISR);
         rtc.enableAlarm(rtc.MATCH_SS);
     #endif
+    /* -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   - */
+    /* while this is battery powered, the power consumption is already rather high, so the extra
+     * consumption of a complex calulation (the most precise one), doesn;t really factor in.
+     */
+    LiPo.begin(BOARD_REFERENCE_VOLTAGE, VOLTAGE_DIVIDER_RATIO, &asigmoidal);
 }
 /*_______________________________________________________________________________________________*/
 
@@ -184,23 +202,20 @@ void loop(){
         /* -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   - */
         case DISPALY_BATTERY:
             {
-                float batteryVoltage = analogRead(BATTERY_VOLTAGE_PIN) * ADC_VOLTAGE_FACTOR;
-                float batteryPercent = calcBatteryPercentageLiPo(batteryVoltage);
 
                 uint8_t brightness = calcDisplayBrightness(
                             analogRead(PHOTORESISTOR_BRIGHTNESS));
                         display.setBrightness(brightness);
 
-                /*display.writeDigitNum(0,(long) batteryPercent/10);
-                display.writeDigitNum(1,(long) batteryPercent%10);
-                display.writeDigitRaw(3, 0b00000000);
-                display.drawColon(false);
-                display.writeDigitRaw(4, 0b11010010);*/
-
-                display.printNumber(analogRead(BATTERY_VOLTAGE_PIN), DEC);
-                display.printFloat(batteryVoltage, 2, DEC);
+                display.printNumber(LiPo.voltage());
                 
                 display.writeDisplay();
+
+                Serial.print("Battery voltage is ");
+	            Serial.print(LiPo.voltage());
+	            Serial.print(" (");
+	            Serial.print(LiPo.level());
+	            Serial.println("%)");
 
                 e_state = IDLE;
             }
@@ -295,21 +310,7 @@ uint8_t calcDisplayBrightness(int adc_reading){
     //return adc_reading >> 8; // shift from 12 bits to 4 bits resolution
     return adc_reading/273; //plot brightness liniar to adc reading
 }
-/* -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   - */
- #ifdef ARDUINO_SAMD_NANO_33_IOT
-float calcBatteryPercentageLiPo(float battery_voltage)
-{
-    // plot battery voltage two two differrent liniar functions to aproximate the percentage.
-    if(battery_voltage > 3.896)
-        return 120.0f * battery_voltage - 404.0f;
 
-    else if (battery_voltage > 3.648)
-        return 255.0f * battery_voltage - 930.0f;  
-
-    else
-        return 0.0;
-}
-#endif
 /* -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   - */
  #ifdef ARDUINO_SAMD_NANO_33_IOT
 void timeAlarmISR(){
