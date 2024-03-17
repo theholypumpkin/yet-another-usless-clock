@@ -42,8 +42,8 @@
 #define POW_TWO(x) (1 << (x))
 /* -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   - */
 // refrerence voltages
-#define MAX_BATTERY_MILLI_VOLTAGE 4200
-#define MIN_BATTERY_MILLI_VOLTAGE 3000
+#define MAX_BATTERY_MILLI_VOLTAGE 3960 // measured with multimeter when fully charged
+#define MIN_BATTERY_MILLI_VOLTAGE 3120 // measured with multimeter when fully discharged
 #define BOARD_REFERENCE_VOLTAGE 3300
 /* -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   - */
 // calculate voltage divider ratio
@@ -85,7 +85,8 @@ Button timeButton(TIME_BUTTON_PIN),
 /* -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   - */
 Adafruit_7segment display = Adafruit_7segment();
 /* -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   - */
-Battery LiPo = Battery(3000, MAX_BATTERY_MILLI_VOLTAGE, BATTERY_VOLTAGE_PIN, ADC_RESOLUTION);
+Battery LiPo = Battery(
+    MIN_BATTERY_MILLI_VOLTAGE, MAX_BATTERY_MILLI_VOLTAGE, BATTERY_VOLTAGE_PIN, ADC_RESOLUTION);
 /*===============================================================================================*/
 void setup(){
     pinMode(LED_BUILTIN, OUTPUT);
