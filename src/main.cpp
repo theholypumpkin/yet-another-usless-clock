@@ -6,6 +6,7 @@
 #include <Adafruit_GFX.h>
 #include <Adafruit_LEDBackpack.h>
 #include <Battery.h>
+#include <Timezone.h> 
 #ifdef ARDUINO_ADAFRUIT_QTPY_ESP32S2
 #include <ESP32Time.h>
 #include <WiFi.h>
@@ -251,6 +252,8 @@ bool updateNetworkTime(){
     WiFi.setHostname(g_hostname);
     uint8_t connection_attempts = 0;
     WiFi.begin(g_wifiSsid, g_wifiPass);
+    /* -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   - */
+    // Attempt to connect to WiFi 5 times
     while (WiFi.status() != WL_CONNECTED){ //Loop until connected to Wifi
         connection_attempts++;
         if(connection_attempts == 4){
@@ -258,23 +261,37 @@ bool updateNetworkTime(){
                 WiFi.disconnect(true, false); //now we no longer need wifi
             #elif ARDUINO_SAMD_NANO_33_IOT
                 WiFi.end();
-                //uint8_t status = WiFi.status();
-                //blink(status);
                 g_error_WiFi_Status_Code = WiFi.status();
             #endif
             return false;
         }
         delay(1000);
     }
-    //if WiFi is sucessful I should exprect 3 blinks
-    //uint8_t status = WiFi.status();
-    //blink(status);
-
+    /* -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   - */
     WiFiUDP ntpUdpObject;
     //Summer time
-    //NTPClient ntpClient(ntpUdpObject, g_ntpTimeServerURL, 7200);
+    NTPClient ntpClient(ntpUdpObject, g_ntpTimeServerURL);
     //Winter time
-    NTPClient ntpClient(ntpUdpObject, g_ntpTimeServerURL, 3600);
+    //NTPClient ntpClient(ntpUdpObject, g_ntpTimeServerURL, 3600);
+    TimeChangeRule DaylightSavingTime = {
+        "CEST", // Central European Summer Time
+        Last, // Last week of the Month
+        Sun, // Sunday of the last week
+        Mar, // Month March
+        2, // change time at 2am
+        120 // plus 2 hours
+    };
+    TimeChangeRule StandardTime = {
+        "CET", // Central European Time
+        Last, // Last Week of the month
+        Sun, // Sunday of the last week
+        Oct, // Month October
+        3, // change at 3 am 
+        60 // one hour
+    };
+    Timezone timezone(DaylightSavingTime, StandardTime); 
+    /* -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   - */
+    // attempt to fetch time 5 times
     ntpClient.begin();
     connection_attempts = 0;
     while(!ntpClient.update()){ //attempt to connect to ntp server up to 5 times.
@@ -296,13 +313,19 @@ bool updateNetworkTime(){
         }
         delay(1000);
     }
+    /* -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   - */
+    // Get ntp time from time server
     unsigned long epochTime = ntpClient.getEpochTime();
+    time_t ofsetEpochTime = timezone.toLocal( (time_t) epochTime);
+    
     #ifdef ARDUINO_ADAFRUIT_QTPY_ESP32S2
-        rtc.setTime(epochTime);
+        ntpClient.end();
         WiFi.disconnect(true, false); //now we no longer need wifi
+        rtc.setTime(ofsetEpochTime);
     #elif ARDUINO_SAMD_NANO_33_IOT
-        rtc.setEpoch(epochTime);
+        ntpClient.end();
         WiFi.end();
+        rtc.setEpoch(ofsetEpochTime);
     #endif
     return true;
 }
