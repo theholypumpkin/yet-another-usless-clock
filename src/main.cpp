@@ -29,7 +29,16 @@
     #define uS_TO_S_FACTOR 1000000ULL  /* Conversion factor for micro seconds to seconds */
     #define TIME_TO_SLEEP 60
 
-#elif ARDUINO_SAMD_NANO_33_IOT
+#elif ARDUINO_SAMD_NANO_33_IOT_BIG_SEGMENTS_DISPLAY
+    /* -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   - */
+    // pin defintions
+    #define PHOTORESISTOR_BRIGHTNESS A0
+    #define BATTERY_VOLTAGE_PIN A7
+    #define TIME_BUTTON_PIN 2
+    #define DATE_BUTTON_PIN 3
+    #define BATTERY_VOLTAGE_BUTTON_PIN 10
+    
+#elif ARDUINO_SAMD_NANO_33_IOT_SMALL_SEGMENTS_DISPLAY
     /* -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   - */
     // pin defintions
     #define PHOTORESISTOR_BRIGHTNESS A0
