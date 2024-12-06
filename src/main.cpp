@@ -37,14 +37,14 @@
     #define TIME_BUTTON_PIN 2
     #define DATE_BUTTON_PIN 3
     #define BATTERY_VOLTAGE_BUTTON_PIN 10
-    
+
 #elif ARDUINO_SAMD_NANO_33_IOT_SMALL_SEGMENTS_DISPLAY
     /* -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   - */
     // pin defintions
     #define PHOTORESISTOR_BRIGHTNESS A0
     #define BATTERY_VOLTAGE_PIN A7
     #define TIME_BUTTON_PIN 2
-    #define DATE_BUTTON_PIN 3
+    #define DATE_BUTTON_PIN 5
     #define BATTERY_VOLTAGE_BUTTON_PIN 10
 #endif
 /* -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   -   - */
